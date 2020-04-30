@@ -1,0 +1,315 @@
+<!DOCTYPE HTML>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Hide data in PNG files</title>
+    <meta name="description" content="Hide data in a PNG File" />
+
+    <script src="js/UPNG.js"></script>
+	<script src="js/jsbn.js"></script>
+	<script src="js/jsbn2.js"></script>
+	<script src="js/PermBigInt.js"></script>
+
+    <script type="text/javascript">
+
+		function Str2BigInteger(s) {
+		var v=new BigInteger('0');
+		for (var i=0; i<s.length; i++) 
+		  v=v.multiply(new BigInteger('128')).add(new BigInteger((s.charCodeAt(i)%128).toString()));
+		return v;
+		}  
+
+		function BigInteger2Str(v) {
+		var s='';
+		var zero=new BigInteger('0');
+		while (!v.equals(zero)) {
+			var p=v.divideAndRemainder(new BigInteger('128'));
+			s=String.fromCharCode(p[1].intValue())+s;
+			v=p[0];
+			}
+		return s;
+		}  
+
+			var png = null;
+			
+
+			function addPNG(buff, name)
+			{
+				console.log("addPNG "+name);
+				if (buff==null) {
+					console.log("buff is null !!!");
+					return;
+				}
+
+				var w, h, rgba;
+
+				var mgc=[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], ubuff=new Uint8Array(buff);
+				if(ubuff[0]==0xff && ubuff[1]==0xd8 && ubuff[2]==0xff) { 
+					// This is JPG - no message hidden
+					console.log("JPEG");
+					var j = new PDFJS["JpegImage"]();  
+					j.parse(ubuff);
+					w = j.width;
+					h = j.height; 
+					var area = w*h;
+					var data = j.getData(
+						{"width":w,"height":h,"forceRGB":true,"isSourcePDF":false});
+
+					var nbuf = new Uint8Array(area*4);
+					for(var i=0; i<area; i++) {
+						var qi = i<<2, ti = qi-i;
+						nbuf[qi  ]=data[ti+0];
+						nbuf[qi+1]=data[ti+1];
+						nbuf[qi+2]=data[ti+2];
+						nbuf[qi+3]=255;
+					}
+					rgba = nbuf.buffer;  ofmt="jpg"
+				}
+				else {
+					console.log("PNG");
+					// Check this is a PNG
+					// console.log(ubuff[0]+" "+ubuff[1]+" "+ubuff[2]+" "+ubuff[3]+" "+ubuff[4]);
+					for(var i=0; i<8; i++) 
+						if(mgc[i]!=ubuff[i]) return;
+
+					// decode the image
+					var img  = UPNG.decode(buff);
+
+					// palette image
+					if (img.ctype==3) {
+						// This is a palette image
+						var p = img.tabs["PLTE"];
+
+						// create RGBA palette
+						var plte=[];
+						for (var i=0; i<(256*3); i=i+3)
+							plte[i/3]=(((255*256+p[i+2])*256+p[i+1])*256)+p[i]
+
+						// console.log("palette ="+plte);
+						// check palete size and decode message
+						// ------------------------------------
+						// Decode the Message HERE
+						// ------------------------------------
+						// sort the palette
+						nplte = plte.slice().sort((a, b) => b - a);
+
+						// compute the sort permutation
+						var perm=[];
+						for (var i=0; i<256;i++) {
+							for (var j=0; j<256; j++) {						
+								if (nplte[i]==plte[j]) {
+									perm[j]=i;
+									break;
+									}	
+								}
+							}
+						// console.log("perm = "+perm);
+						// decode the message
+						document.getElementById('code').value = BigInteger2Str(decode(perm));
+
+					}
+					rgba = UPNG.toRGBA8(img)[0];
+					w=img.width;  h=img.height; ofmt="png";
+				}
+
+				png = {name:name, width:w, height:h, odata:buff, orgba:new Uint8Array(rgba), ndata:null, nrgba:null, ofmt:ofmt };
+ 
+			}
+
+			function save()
+			{
+				// console.log("save");
+				if(png==null) 
+					return;
+				// Quantize to 256 colors
+				var nimg = UPNG.encode.compress([png.orgba.buffer], png.width, png.height, 256, [false, false, false, 0, false]);
+
+				// got the palette
+				// console.log("Palette ="+nimg.plte);
+				// console.log("Palette size="+nimg.plte.length);
+
+				// check palette size
+				if (nimg.plte.length<256) {
+					console.log("Palette too small");
+					// extend the palette size
+					while(nimg.plte.length<256) {
+						var newColor=255*256*256*256+Math.round(Math.random()*256*256*256);
+						// check for duplicate
+						var found=false;
+						for (i=0;i<nimg.plte.length;i++) {
+							if (newColor==nimg.plte[i]) {
+								found=true;
+								break;
+							}
+						}
+						if (!found) 
+							nimg.plte.push(newColor);
+						}
+				// console.log("Extended Palette ="+nimg.plte);
+				// console.log("Extended Palette size="+nimg.plte.length);
+
+					}
+
+				// recompute the image
+				if (nimg.frames.length>1) {
+					console.log("Mono image supported only");
+					return;
+				}
+
+				// --------------------------------------------
+				// sort the palette
+				// --------------------------------------------	
+				// console.log("sort the palette");
+				// console.log("nimg.plte ",nimg.plte);
+				var nplte = nimg.plte.slice().sort((a, b) => b - a);
+				// console.log("palette sorted = "+nplte);
+				// console.log("nimg.plte ",nplte);
+
+				// compute the sort permutation
+				var sperm=[];
+				for (var i=0; i<256;i++) {
+					for (var j=0; j<256; j++) {						
+						if (nplte[i]==nimg.plte[j]) {
+							sperm[j]=i;
+							break;
+							}	
+						}
+					}
+
+				// Apply the sort to the image
+				// TODO : do it on all frames
+				var img=nimg.frames[0].img;
+				// console.log("length="+img.length);
+				for(var i=0; i<img.length; i++) {					
+					img[i]=sperm[img[i]];
+				}
+						
+				// --------------------------------------------
+				// compute the permutation
+				// --------------------------------------------
+				perm = encode(Str2BigInteger(document.getElementById('code').value), 256); 
+				// console.log("permutation = "+perm);
+
+				// apply permutation to the pallette
+				var nplte2=[]
+				for(var i=0;i<256;i++) {
+					nplte2[i]=nplte[perm[i]];
+				}
+				console.log("nplte2="+nplte2);
+
+				// Compute inverse permutation
+				var invPerm=[];
+				for (var i=0; i<256;i++) {
+					for (var j=0; j<256; j++) {						
+						if (perm[j]==i) {
+							invPerm[i]=j;
+							break;
+						}
+					}
+				}
+
+				// apply inverse permutation to the image
+				for(var i=0; i<img.length; i++) {			
+					img[i]=invPerm[img[i]];
+				}
+				
+				// --------------------------------------------
+				// set the new palette
+				// --------------------------------------------
+				nimg.plte=nplte2;
+				
+				// compress the PNG
+				UPNG.encode.compressPNG(nimg, -1);
+				
+				// send the buff as result
+				png.ndata=UPNG.encode._main(nimg, png.width, png.height);
+
+				// Save it
+				var data = new Uint8Array(png.ndata);
+				var a = document.createElement( "a" );
+				var blob = new Blob([data]);
+				var url = window.URL.createObjectURL( blob );
+				a.href = url; 
+				a.download = png.name.substring(0, png.name.lastIndexOf('.'))  + ".png";
+				document.body.appendChild(a);
+				a.click();
+				document.body.removeChild(a);
+			}
+
+		</script>
+
+
+</head>
+
+<body>
+
+	<h1>Hide data in a PNG file</h1>
+	
+	Message 
+	<input type="text" id="code" placeholder="Type your message here" autocomplete="off" size=60><br><br>
+
+	<!-- idea from : https://www.javascripture.com/FileReader -->
+	<input type='file' id="input" accept='image/*' onchange='openFile(event)'>
+	<br><br>
+	<img id='output' width="500" height="500">
+	<br><br>
+
+	<script>
+		function dataURItoUint8Array(dataURI) {
+			  // convert base64 to raw binary data held in a string
+			  // doesn't handle URLEncoded DataURIs - see SO answer #6850276 for code that does this
+			  var byteString = atob(dataURI.split(',')[1]);
+
+			  // separate out the mime component
+			  var mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0]
+
+			  // write the bytes of the string to an ArrayBuffer
+			  var ab = new ArrayBuffer(byteString.length);
+
+			  // create a view into the buffer
+			  var ia = new Uint8Array(ab);
+
+			  // set the bytes of the buffer to the correct values
+			  for (var i = 0; i < byteString.length; i++) {
+			      ia[i] = byteString.charCodeAt(i);
+			  }
+
+			  // write the ArrayBuffer to a blob, and you're done
+			  // var blob = new Blob([ab], {type: mimeString});
+			  // return blob;
+			  return ab;
+		}				
+
+			// 
+		  var openFile = function(event) {
+		    var input = event.target;
+
+		    var reader = new FileReader();
+		    reader.onload = function(){
+		      var dataURL = reader.result;
+		      var output = document.getElementById('output');
+		      output.src = dataURL;
+		    };
+
+	        reader.addEventListener("loadend", function(event) { 
+	        	// console.log("loaded : "+input.files[0].name);
+	        	addPNG(dataURItoUint8Array(reader.result), input.files[0].name);
+	        	});
+
+		    reader.readAsDataURL(input.files[0]);
+		  };
+			</script>
+
+		</div>
+	</div>
+
+
+	<button onclick="save()">Save</button>
+
+</body>
+</html>
+
+
+
+
