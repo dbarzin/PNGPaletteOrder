@@ -29,7 +29,7 @@ As a matter of fact, a steganographic technique should also provide a build in e
 Test
 ----
 
-You can test it here : http://www.barzin.be/PGPaletteOrdre
+You can test it here : http://www.barzin.be/PGPaletteOrder
 
 References
 ----------
