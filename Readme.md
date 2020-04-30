@@ -2,13 +2,13 @@
 PNGPaletteOrder
 ================
 
-This is a small javascript steganographic tool to hide information in the pallet order of a PNG image file.
+This is a small steganographic tool written in javascript to hide information in the pallet order of a PNG file.
 
 _Steganography_ is the practice of concealing a file, message, image, or video within another file, message, image, or video.
 
 Where are those data hidden ?
 -----------------------------
-The data are store into the palette of a PNG file. The picture is in no way modify, just the order of the color within the palette is slightly modify in order to keep our secret message. The compression or size of the file won't be change at all. 
+The data are store into the palette of a PNG file. The picture is not modified, only the order of the color within the palette is slightly modify in order to keep our secret message. The compression or size of the file won't be change at all. 
 
 A viewer won't be able to know what are the change. Of course, someone with the program will be able to retreave the secret message. And someone looking at the right place might notice that the order of the color within the palette is unusual (at least not sorted).
 
@@ -26,6 +26,10 @@ If you want to compress your message, make sure this is the first operation you 
 
 As a matter of fact, a steganographic technique should also provide a build in encryption algorithm so that the knowledge of the technique is not the only secret (as for security by obscurity).
 
+Test
+----
+
+You can test it here : http://www.barzin.be/PGPaletteOrdre
 
 References
 ----------
